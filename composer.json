@@ -2,6 +2,7 @@
     "name": "sergio/api-forms",
     "description": "Backend para la gestión de formularios web",
     "type": "project",
+    "license": "proprietary",
     "require": {
         "php": "^8.2",
         "flightphp/core": "^3.18",
