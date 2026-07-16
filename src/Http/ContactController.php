@@ -41,7 +41,7 @@ final class ContactController
 
     private static function successUrl(): string
     {
-        return self::localUrl($_ENV['CONTACT_SUCCESS_URL'] ?? '/gracias/', '/gracias/');
+        return self::localUrl($_ENV['CONTACT_SUCCESS_URL'] ?? '/gracies/', '/gracies/');
     }
 
     private static function errorUrl(): string
