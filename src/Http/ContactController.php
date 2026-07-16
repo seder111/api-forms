@@ -4,76 +4,62 @@ declare(strict_types=1);
 
 namespace App\Http;
 
+use App\Mail\PlunkMailer;
+
 final class ContactController
 {
     private const MAX_NAME_LENGTH = 100;
     private const MAX_EMAIL_LENGTH = 254;
 
+    /** Checkbox fields whose raw "1"/"" value should read as Sí/No in the email. */
+    private const CHECKBOX_FIELDS = ['privacitat', 'newsletter'];
+
     public static function store(): void
     {
-        $name = trim((string) ($_POST['nom'] ?? ''));
-        $email = trim((string) ($_POST['email'] ?? ''));
-        $privacyAccepted = ($_POST['privacitat'] ?? null) === '1';
-        $newsletterAccepted = ($_POST['newsletter'] ?? null) === '1';
+        $fields = FormRequest::fields();
+
+        $name = (string) ($fields['nom'] ?? '');
+        $email = (string) ($fields['email'] ?? '');
+        $privacyAccepted = ($fields['privacitat'] ?? null) === '1';
 
         if (!self::isValid($name, $email, $privacyAccepted)) {
             self::redirect(self::errorUrl());
         }
 
-        self::sendContactEmail($name, $email, $newsletterAccepted);
-
-        // En el siguiente paso se guardará también el consentimiento opcional.
-        unset($newsletterAccepted);
+        PlunkMailer::send(self::subject($name), self::humanizeCheckboxes($fields));
 
         self::redirect(self::successUrl());
     }
 
-    private static function sendContactEmail(string $name, string $email, bool $newsletterAccepted): void
+    private static function subject(string $name): string
     {
-        $apiKey = $_ENV['PLUNK_API_KEY'] ?? '';
-        $from = $_ENV['PLUNK_FROM'] ?? '';
-        $to = $_ENV['CONTACT_RECIPIENT'] ?? '';
-        $nameFrom = $_ENV['PLUNK_NAME_FROM'] ?? '';
+        $configured = trim((string) ($_ENV['CONTACT_EMAIL_SUBJECT'] ?? ''));
 
-        if ($apiKey === '' || $from === '' || $to === '') {
-            error_log('Plunk configuration is missing in environment variables.');
-            return;
+        if ($configured !== '') {
+            return str_replace('{nombre}', $name, $configured);
         }
 
-        $newsletterStatus = $newsletterAccepted ? 'Sí' : 'No';
+        return $name !== ''
+            ? 'New contact message from' . $name
+            : 'New contact message';
+    }
 
-        $subject = "Nuevo mensaje de contacto de " . $name;
-        $body = "<p><strong>Nombre:</strong> " . htmlspecialchars($name) . "</p>" .
-            "<p><strong>Email:</strong> " . htmlspecialchars($email) . "</p>" .
-            "<p><strong>Acepta Newsletter:</strong> " . $newsletterStatus . "</p>";
-
-        $ch = curl_init("https://next-api.useplunk.com/v1/send");
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER => [
-                "Authorization: Bearer " . $apiKey,
-                "Content-Type: application/json",
-            ],
-            CURLOPT_POSTFIELDS => json_encode([
-                "to" => $to,
-                "subject" => $subject,
-                "body" => $body,
-                "from" => $from,
-                "name" => $nameFrom,
-            ]),
-        ]);
-
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-
-        if ($response === false) {
-            error_log('Curl error sending email via Plunk: ' . curl_error($ch));
-        } elseif ($httpCode >= 400) {
-            error_log('Plunk API error (' . $httpCode . '): ' . $response);
+    /**
+     * Translates this form's known checkbox fields to Sí/No before handing
+     * the data to the generic mailer, which must not assume "1" means "yes".
+     *
+     * @param array<string, string|array<int, string>> $fields
+     * @return array<string, string|array<int, string>>
+     */
+    private static function humanizeCheckboxes(array $fields): array
+    {
+        foreach (self::CHECKBOX_FIELDS as $checkbox) {
+            if (array_key_exists($checkbox, $fields)) {
+                $fields[$checkbox] = $fields[$checkbox] === '1' ? 'Sí' : 'No';
+            }
         }
 
-        curl_close($ch);
+        return $fields;
     }
 
     private static function isValid(
