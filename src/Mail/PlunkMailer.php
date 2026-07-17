@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Mail;
 
+use App\Plunk\Client;
+
 final class PlunkMailer
 {
     /**
@@ -18,38 +20,18 @@ final class PlunkMailer
     {
         $config = self::config();
 
-        if ($config['apiKey'] === '' || $config['from'] === '' || $config['to'] === '') {
+        if ($config['from'] === '' || $config['to'] === '') {
             error_log('Plunk configuration is missing in environment variables.');
             return;
         }
 
-        $ch = curl_init('https://next-api.useplunk.com/v1/send');
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER => [
-                'Authorization: Bearer ' . $config['apiKey'],
-                'Content-Type: application/json',
-            ],
-            CURLOPT_POSTFIELDS => json_encode([
-                'to' => $config['to'],
-                'subject' => $subject,
-                'body' => self::buildHtmlBody($fields),
-                'from' => $config['from'],
-                'name' => $config['nameFrom'],
-            ]),
+        Client::post('/v1/send', [
+            'to' => $config['to'],
+            'subject' => $subject,
+            'body' => self::buildHtmlBody($fields),
+            'from' => $config['from'],
+            'name' => $config['nameFrom'],
         ]);
-
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-
-        if ($response === false) {
-            error_log('Curl error sending email via Plunk: ' . curl_error($ch));
-        } elseif ($httpCode >= 400) {
-            error_log('Plunk API error (' . $httpCode . '): ' . $response);
-        }
-
-        curl_close($ch);
     }
 
     /**
@@ -88,12 +70,11 @@ final class PlunkMailer
     }
 
     /**
-     * @return array{apiKey: string, from: string, to: string, nameFrom: string}
+     * @return array{from: string, to: string, nameFrom: string}
      */
     private static function config(): array
     {
         return [
-            'apiKey' => $_ENV['PLUNK_API_KEY'] ?? '',
             'from' => $_ENV['PLUNK_FROM'] ?? '',
             'to' => $_ENV['CONTACT_RECIPIENT'] ?? '',
             'nameFrom' => $_ENV['PLUNK_NAME_FROM'] ?? '',

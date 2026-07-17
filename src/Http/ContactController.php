@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http;
 
 use App\Mail\PlunkMailer;
+use App\Plunk\Contacts;
 
 final class ContactController
 {
@@ -21,12 +22,15 @@ final class ContactController
         $name = (string) ($fields['nom'] ?? '');
         $email = (string) ($fields['email'] ?? '');
         $privacyAccepted = ($fields['privacitat'] ?? null) === '1';
+        $newsletterAccepted = ($fields['newsletter'] ?? null) === '1';
 
         if (!self::isValid($name, $email, $privacyAccepted)) {
             self::redirect(self::errorUrl());
         }
 
         PlunkMailer::send(self::subject($name), self::humanizeCheckboxes($fields));
+
+        Contacts::saveIfNew($email, $name, $newsletterAccepted);
 
         self::redirect(self::successUrl());
     }
@@ -40,7 +44,7 @@ final class ContactController
         }
 
         return $name !== ''
-            ? 'New contact message from' . $name
+            ? 'New contact message from ' . $name
             : 'New contact message';
     }
 
