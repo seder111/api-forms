@@ -24,11 +24,12 @@ de la API se publica.
 
 ```text
 /home/usuario/
+├── .env
+│
 ├── api-forms/
 │   ├── src/
 │   ├── storage/
 │   ├── vendor/
-│   ├── .env
 │   ├── bootstrap.php
 │   ├── composer.json
 │   └── composer.lock
@@ -40,6 +41,11 @@ de la API se publica.
         ├── index.php
         └── .htaccess
 ```
+
+El `.env` vive junto a `api-forms/`, no dentro: así, actualizar la aplicación
+consiste en sustituir la carpeta `api-forms/` completa sin tocar la
+configuración. Por compatibilidad, un `.env` dentro de `api-forms/` también
+funciona y, si existen los dos, tiene prioridad el de dentro.
 
 De esta manera, `.env`, el código PHP, las dependencias y los futuros registros
 no se pueden descargar desde el navegador.
@@ -72,7 +78,8 @@ compatible con la del servidor.
 
 ### 3. Crear la configuración
 
-Copia `.env.example` como `.env` dentro de la carpeta privada:
+Copia `.env.example` como `.env` al lado de la carpeta privada (en
+`/home/usuario/.env`, a la misma altura que `api-forms/`):
 
 ```dotenv
 APP_ENV=production
@@ -297,17 +304,19 @@ composer dump-autoload --optimize
 
 ## Despliegue de actualizaciones
 
-En cada actualización:
+Con el `.env` fuera de la carpeta privada, actualizar es sustituir la carpeta:
 
-1. Haz una copia de seguridad si ya se almacenan datos.
-2. Sube `bootstrap.php`, `src/`, `composer.json` y `composer.lock`.
-3. Ejecuta `composer install --no-dev --optimize-autoloader` o sube el nuevo
-   `vendor/` si han cambiado las dependencias.
-4. Conserva el `.env` existente del servidor.
-5. Copia `doc_public/api/` solamente si ha cambiado el punto de entrada.
-6. Repite las comprobaciones anteriores.
+1. Haz una copia de seguridad si ya se almacenan datos (por ejemplo, registros
+   en `storage/`, que también se pierde al sustituir la carpeta).
+2. Reemplaza la carpeta `api-forms/` completa por la nueva versión.
+3. Ejecuta `composer install --no-dev --optimize-autoloader` o incluye
+   `vendor/` en la carpeta que subes.
+4. Copia `doc_public/api/` solamente si ha cambiado el punto de entrada.
+5. Repite las comprobaciones anteriores.
 
-No reemplaces el `.env` de producción durante un despliegue.
+El `.env` del servidor no se toca porque vive fuera de `api-forms/`. Si tu
+instalación es anterior y aún lo tiene dentro, muévelo un nivel arriba antes
+de actualizar de esta forma.
 
 ## Resolución de problemas
 
