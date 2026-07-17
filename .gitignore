@@ -1,4 +1,34 @@
-/.env
+# Dependencias
 /vendor/
+composer.phar
+
+# Configuración sensible y entorno
+.env
+.env.local
+.env.testing
+.env.*.local
+
+# Archivos del sistema
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDEs y Editores
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.buildpath
+.project
+.settings/
+
+# Almacenamiento y Logs del proyecto
 /storage/logs/*
 !/storage/logs/.gitkeep
