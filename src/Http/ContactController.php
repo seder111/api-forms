@@ -19,20 +19,33 @@ final class ContactController
     {
         $fields = FormRequest::fields();
 
-        $name = (string) ($fields['nom'] ?? '');
-        $email = (string) ($fields['email'] ?? '');
+        $name = self::stringField($fields, 'nom');
+        $email = self::stringField($fields, 'email');
         $privacyAccepted = ($fields['privacitat'] ?? null) === '1';
         $newsletterAccepted = ($fields['newsletter'] ?? null) === '1';
 
         if (!self::isValid($name, $email, $privacyAccepted)) {
-            self::redirect(self::errorUrl());
+            self::redirect(self::redirectUrl('CONTACT_ERROR_URL', '/contacto/?error=validation'));
         }
 
         PlunkMailer::send(self::subject($name), self::humanizeCheckboxes($fields));
 
-        Contacts::saveIfNew($email, $name, $newsletterAccepted);
+        Contacts::save($email, $newsletterAccepted, $fields);
 
-        self::redirect(self::successUrl());
+        self::redirect(self::redirectUrl('CONTACT_SUCCESS_URL', '/gracias/'));
+    }
+
+    /**
+     * A field posted as an array (e.g. "nom[]=x") reads as empty so it fails
+     * validation instead of casting to the literal "Array".
+     *
+     * @param array<string, string|array<int, string>> $fields
+     */
+    private static function stringField(array $fields, string $key): string
+    {
+        $value = $fields[$key] ?? '';
+
+        return is_string($value) ? $value : '';
     }
 
     private static function subject(string $name): string
@@ -79,21 +92,15 @@ final class ContactController
             && $privacyAccepted;
     }
 
-    private static function successUrl(): string
+    /**
+     * Only same-site local paths are allowed as redirect targets: anything
+     * else in the env var (external, protocol-relative or empty) falls back,
+     * so a misconfigured .env can never become an open redirect.
+     */
+    private static function redirectUrl(string $envKey, string $fallback): string
     {
-        return self::localUrl($_ENV['CONTACT_SUCCESS_URL'] ?? '/gracias/', '/gracias/');
-    }
+        $url = (string) ($_ENV[$envKey] ?? '');
 
-    private static function errorUrl(): string
-    {
-        return self::localUrl(
-            $_ENV['CONTACT_ERROR_URL'] ?? '/contacto/?error=validation',
-            '/contacto/?error=validation'
-        );
-    }
-
-    private static function localUrl(string $url, string $fallback): string
-    {
         return str_starts_with($url, '/') && !str_starts_with($url, '//')
             ? $url
             : $fallback;

@@ -86,6 +86,35 @@ CONTACT_ERROR_URL=/contacto/?error=validation
 - Las dos rutas deben comenzar por `/` y pertenecer al mismo sitio.
 - `APP_DEBUG` debe permanecer en `false` en producción.
 
+### Contactos en Plunk
+
+Guardar los remitentes como contactos en Plunk es opcional y está desactivado
+por defecto: cada web debe activarlo explícitamente con
+`PLUNK_SAVE_CONTACTS=true` en su `.env`. Sin esa variable, la API solo envía
+los emails de notificación.
+
+Con la función activada, cada envío válido se guarda como contacto en Plunk.
+El email identifica el registro y la casilla `newsletter` determina la
+suscripción: si el formulario no envía ese campo, el contacto queda como no
+suscrito.
+
+`PLUNK_CONTACT_FIELDS` define qué otros campos del formulario se guardan en
+los datos del contacto, separados por comas. Cada entrada puede ser `campo` o
+`campo:claveEnPlunk` para guardarlo con otro nombre:
+
+```dotenv
+# El campo "nom" del formulario se guarda como "name" en Plunk,
+# y "telefon" se guarda tal cual.
+PLUNK_CONTACT_FIELDS=nom:name,telefon
+```
+
+Si se deja vacía, solo se guardan el email y el estado de suscripción.
+
+Los contactos que ya existen en Plunk no se modifican, con una excepción: si
+el envío marca la casilla `newsletter` y el contacto no estaba suscrito, se le
+suscribe. Nunca se des-suscribe a nadie desde el formulario ni se sobrescriben
+sus datos.
+
 El archivo `.env` no debe subirse a Git ni colocarse dentro de `public_html`.
 
 ### 4. Publicar el punto de entrada
