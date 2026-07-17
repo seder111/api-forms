@@ -24,11 +24,12 @@ de la API se publica.
 
 ```text
 /home/usuario/
+├── .env
+│
 ├── api-forms/
 │   ├── src/
 │   ├── storage/
 │   ├── vendor/
-│   ├── .env
 │   ├── bootstrap.php
 │   ├── composer.json
 │   └── composer.lock
@@ -40,6 +41,11 @@ de la API se publica.
         ├── index.php
         └── .htaccess
 ```
+
+El `.env` vive junto a `api-forms/`, no dentro: así, actualizar la aplicación
+consiste en sustituir la carpeta `api-forms/` completa sin tocar la
+configuración. Por compatibilidad, un `.env` dentro de `api-forms/` también
+funciona y, si existen los dos, tiene prioridad el de dentro.
 
 De esta manera, `.env`, el código PHP, las dependencias y los futuros registros
 no se pueden descargar desde el navegador.
@@ -72,7 +78,8 @@ compatible con la del servidor.
 
 ### 3. Crear la configuración
 
-Copia `.env.example` como `.env` dentro de la carpeta privada:
+Copia `.env.example` como `.env` al lado de la carpeta privada (en
+`/home/usuario/.env`, a la misma altura que `api-forms/`):
 
 ```dotenv
 APP_ENV=production
@@ -85,6 +92,35 @@ CONTACT_ERROR_URL=/contacto/?error=validation
 - `CONTACT_ERROR_URL` es la página de destino cuando falla la validación.
 - Las dos rutas deben comenzar por `/` y pertenecer al mismo sitio.
 - `APP_DEBUG` debe permanecer en `false` en producción.
+
+### Contactos en Plunk
+
+Guardar los remitentes como contactos en Plunk es opcional y está desactivado
+por defecto: cada web debe activarlo explícitamente con
+`PLUNK_SAVE_CONTACTS=true` en su `.env`. Sin esa variable, la API solo envía
+los emails de notificación.
+
+Con la función activada, cada envío válido se guarda como contacto en Plunk.
+El email identifica el registro y la casilla `newsletter` determina la
+suscripción: si el formulario no envía ese campo, el contacto queda como no
+suscrito.
+
+`PLUNK_CONTACT_FIELDS` define qué otros campos del formulario se guardan en
+los datos del contacto, separados por comas. Cada entrada puede ser `campo` o
+`campo:claveEnPlunk` para guardarlo con otro nombre:
+
+```dotenv
+# El campo "nom" del formulario se guarda como "name" en Plunk,
+# y "telefon" se guarda tal cual.
+PLUNK_CONTACT_FIELDS=nom:name,telefon
+```
+
+Si se deja vacía, solo se guardan el email y el estado de suscripción.
+
+Los contactos que ya existen en Plunk no se modifican, con una excepción: si
+el envío marca la casilla `newsletter` y el contacto no estaba suscrito, se le
+suscribe. Nunca se des-suscribe a nadie desde el formulario ni se sobrescriben
+sus datos.
 
 El archivo `.env` no debe subirse a Git ni colocarse dentro de `public_html`.
 
@@ -268,17 +304,19 @@ composer dump-autoload --optimize
 
 ## Despliegue de actualizaciones
 
-En cada actualización:
+Con el `.env` fuera de la carpeta privada, actualizar es sustituir la carpeta:
 
-1. Haz una copia de seguridad si ya se almacenan datos.
-2. Sube `bootstrap.php`, `src/`, `composer.json` y `composer.lock`.
-3. Ejecuta `composer install --no-dev --optimize-autoloader` o sube el nuevo
-   `vendor/` si han cambiado las dependencias.
-4. Conserva el `.env` existente del servidor.
-5. Copia `doc_public/api/` solamente si ha cambiado el punto de entrada.
-6. Repite las comprobaciones anteriores.
+1. Haz una copia de seguridad si ya se almacenan datos (por ejemplo, registros
+   en `storage/`, que también se pierde al sustituir la carpeta).
+2. Reemplaza la carpeta `api-forms/` completa por la nueva versión.
+3. Ejecuta `composer install --no-dev --optimize-autoloader` o incluye
+   `vendor/` en la carpeta que subes.
+4. Copia `doc_public/api/` solamente si ha cambiado el punto de entrada.
+5. Repite las comprobaciones anteriores.
 
-No reemplaces el `.env` de producción durante un despliegue.
+El `.env` del servidor no se toca porque vive fuera de `api-forms/`. Si tu
+instalación es anterior y aún lo tiene dentro, muévelo un nivel arriba antes
+de actualizar de esta forma.
 
 ## Resolución de problemas
 
