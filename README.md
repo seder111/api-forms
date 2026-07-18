@@ -193,18 +193,23 @@ el método `POST`:
 </form>
 ```
 
-Los atributos `name` y los valores de las casillas deben coincidir exactamente
-con los esperados por el backend:
+El backend acepta cualquier conjunto de campos: todos los que envíe el
+formulario se incluyen en el email de notificación. Los papeles especiales se
+asignan en el `.env`, no en el código:
 
-| Campo | Tipo | Obligatorio | Valor esperado |
-|---|---|---:|---|
-| `nom` | Texto | Sí | Máximo 100 caracteres |
-| `email` | Email | Sí | Email válido, máximo 254 caracteres |
-| `privacitat` | Casilla | Sí | `1` |
-| `newsletter` | Casilla | No | `1` cuando se acepta |
+| Variable | Qué hace | Por defecto |
+|---|---|---|
+| `CONTACT_EMAIL_FIELD` | Campo que contiene el email (siempre obligatorio, se valida como dirección) | `email` |
+| `CONTACT_NEWSLETTER_FIELD` | Casilla que suscribe a la newsletter (`value="1"`); ausente = no suscrito | `newsletter` |
+| `CONTACT_REQUIRED_FIELDS` | Campos obligatorios además del email, separados por comas | vacío |
+| `CONTACT_CHECKBOX_FIELDS` | Casillas que se muestran como Sí/No en el email de notificación | vacío |
 
-La validación HTML mejora la experiencia, pero la validación definitiva
-siempre se realiza de nuevo en PHP.
+Los `name` del formulario deben coincidir con lo declarado en el `.env`. Las
+casillas deben enviar `value="1"`. La validación HTML mejora la experiencia,
+pero la validación definitiva siempre se realiza de nuevo en PHP: el email
+debe ser válido (máximo 254 caracteres), los campos de
+`CONTACT_REQUIRED_FIELDS` deben llegar con valor y ningún campo puede superar
+los 5000 caracteres.
 
 ## Páginas que debe tener la web
 
@@ -289,14 +294,20 @@ web en otra.
 
 ## Adaptar los campos
 
-Las rutas se encuentran en `src/routes.php` y la validación del formulario en
-`src/Http/ContactController.php`.
+No hace falta tocar PHP: los campos se adaptan por `.env`. Si otro formulario
+utiliza, por ejemplo, `name` en vez de `nom` y `subscribe` en vez de
+`newsletter`:
 
-Si otro formulario utiliza, por ejemplo, `name` en vez de `nom`, debes modificar
-el atributo HTML y la lectura correspondiente en el controlador. Ambos lados
-deben coincidir.
+```dotenv
+CONTACT_EMAIL_FIELD=email
+CONTACT_NEWSLETTER_FIELD=subscribe
+CONTACT_REQUIRED_FIELDS=name,privacy
+CONTACT_CHECKBOX_FIELDS=privacy,subscribe
+PLUNK_CONTACT_FIELDS=name
+```
 
-Después de crear nuevas clases o cambiar namespaces, regenera el autoload:
+Las rutas se encuentran en `src/routes.php`. Si algún día creas nuevas clases
+o cambias namespaces, regenera el autoload:
 
 ```bash
 composer dump-autoload --optimize
@@ -351,8 +362,9 @@ method="POST"
 
 ### Siempre redirige al error
 
-Comprueba que los nombres sean `nom`, `email` y `privacitat`, y que la casilla
-obligatoria envíe `value="1"`.
+Comprueba que el campo declarado en `CONTACT_EMAIL_FIELD` llegue con un email
+válido, que los campos de `CONTACT_REQUIRED_FIELDS` existan en el formulario
+con esos mismos nombres, y que las casillas obligatorias envíen `value="1"`.
 
 ## Seguridad
 
