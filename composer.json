@@ -5,6 +5,7 @@
     "license": "proprietary",
     "require": {
         "php": "^8.2",
+        "ext-pdo": "*",
         "flightphp/core": "^3.18",
         "vlucas/phpdotenv": "^5.6"
     },

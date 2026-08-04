@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Plunk;
 
+use App\Support\Env;
+
 /**
  * Minimal HTTP client for the Plunk API, shared by every Plunk feature.
  *
@@ -42,7 +44,7 @@ final class Client
      */
     private static function request(string $method, string $path, ?array $payload, array $query): ?array
     {
-        $apiKey = $_ENV['PLUNK_API_KEY'] ?? '';
+        $apiKey = Env::string('PLUNK_API_KEY');
 
         if ($apiKey === '') {
             error_log('Plunk API key is missing in environment variables.');

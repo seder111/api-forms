@@ -7,12 +7,16 @@ Backend PHP reutilizable para recibir formularios HTML sin JavaScript. Utiliza
 El frontend puede estar creado con Astro, HTML estático u otra tecnología. Solo
 necesita enviar un formulario mediante `POST`.
 
-> Estado actual: valida nombre, email y consentimientos RGPD, y redirige al
-> visitante. Todavía no guarda los datos ni envía correos.
+> Estado actual: valida los campos configurados en el `.env`, envía un email
+> de notificación mediante Plunk (activado por defecto, desactivable),
+> opcionalmente guarda al remitente como contacto en Plunk, opcionalmente
+> guarda cada envío en una base de datos propia (MySQL, MariaDB o SQLite) y
+> redirige al visitante.
 
 ## Requisitos
 
-- PHP 8.2 o superior.
+- PHP 8.2 o superior, con la extensión PDO (y su driver `pdo_mysql` o
+  `pdo_sqlite` solo si se activa el guardado en base de datos).
 - Apache con `mod_rewrite` y soporte para `.htaccess`.
 - Composer en local o en el servidor.
 - HTTPS en producción.
@@ -82,7 +86,6 @@ Copia `.env.example` como `.env` al lado de la carpeta privada (en
 `/home/usuario/.env`, a la misma altura que `api-forms/`):
 
 ```dotenv
-APP_ENV=production
 APP_DEBUG=false
 CONTACT_SUCCESS_URL=/gracias/
 CONTACT_ERROR_URL=/contacto/?error=validation
@@ -92,6 +95,25 @@ CONTACT_ERROR_URL=/contacto/?error=validation
 - `CONTACT_ERROR_URL` es la página de destino cuando falla la validación.
 - Las dos rutas deben comenzar por `/` y pertenecer al mismo sitio.
 - `APP_DEBUG` debe permanecer en `false` en producción.
+
+Añade también las credenciales de [Plunk](https://useplunk.com/), que se usan
+para el email de notificación y para guardar contactos:
+
+```dotenv
+PLUNK_API_KEY=
+PLUNK_FROM=
+PLUNK_NAME_FROM=
+CONTACT_RECIPIENT=
+```
+
+- `PLUNK_API_KEY` es la clave secreta de la API de Plunk.
+- `PLUNK_FROM` es la dirección remitente del email de notificación (debe estar
+  verificada en Plunk).
+- `PLUNK_NAME_FROM` es el nombre que se muestra como remitente.
+- `CONTACT_RECIPIENT` es la dirección que recibe las notificaciones.
+
+Si falta esta configuración, la API no falla: registra el error en el log del
+servidor y redirige al visitante igualmente.
 
 ### Contactos en Plunk
 
@@ -110,9 +132,9 @@ los datos del contacto, separados por comas. Cada entrada puede ser `campo` o
 `campo:claveEnPlunk` para guardarlo con otro nombre:
 
 ```dotenv
-# El campo "nom" del formulario se guarda como "name" en Plunk,
-# y "telefon" se guarda tal cual.
-PLUNK_CONTACT_FIELDS=nom:name,telefon
+# El campo "name" del formulario se guarda tal cual,
+# y "phone" se guarda como "telefono" en Plunk.
+PLUNK_CONTACT_FIELDS=name,phone:telefono
 ```
 
 Si se deja vacía, solo se guardan el email y el estado de suscripción.
@@ -121,6 +143,46 @@ Los contactos que ya existen en Plunk no se modifican, con una excepción: si
 el envío marca la casilla `newsletter` y el contacto no estaba suscrito, se le
 suscribe. Nunca se des-suscribe a nadie desde el formulario ni se sobrescriben
 sus datos.
+
+En sentido inverso, el email de notificación también puede desactivarse con
+`PLUNK_SEND_EMAIL=false` para despliegues que solo guardan contactos en
+Plunk. Está activado por defecto: sin esa variable, cada envío válido genera
+el email. Con el email desactivado, `PLUNK_FROM`, `PLUNK_NAME_FROM` y
+`CONTACT_RECIPIENT` dejan de ser necesarias.
+
+### Guardar los envíos en una base de datos
+
+Guardar cada envío en una base de datos propia es opcional y está desactivado
+por defecto: cada web debe activarlo explícitamente con
+`DB_SAVE_SUBMISSIONS=true` en su `.env`. Sin esa variable no se abre ninguna
+conexión y todo funciona como hasta ahora.
+
+Con la función activada, cada envío válido se guarda en la tabla
+`submissions` (email, todos los campos como JSON y fecha). La tabla se crea
+automáticamente en el primer uso: no hay que ejecutar ningún script SQL.
+
+```dotenv
+DB_SAVE_SUBMISSIONS=true
+
+# "mysql" (también MariaDB; es el valor por defecto) o "sqlite".
+DB_DRIVER=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_NAME=miweb
+DB_USER=miweb
+DB_PASSWORD=secreto
+```
+
+Para SQLite no hacen falta credenciales: con `DB_DRIVER=sqlite` la base de
+datos es un fichero, por defecto `storage/database.sqlite` dentro de la
+carpeta privada (fuera de `public_html`, como el resto de la aplicación).
+`DB_SQLITE_PATH` permite cambiar la ruta; si es relativa, se resuelve contra
+la carpeta de la aplicación. Nunca coloques ese fichero dentro del webroot
+público.
+
+Como el resto de integraciones, el guardado es *best-effort*: si la base de
+datos no está disponible, el error se registra en el log del servidor y el
+visitante es redirigido a la página de éxito igualmente.
 
 El archivo `.env` no debe subirse a Git ni colocarse dentro de `public_html`.
 
@@ -152,10 +214,10 @@ el método `POST`:
 
 ```html
 <form action="/api/contact" method="POST">
-  <label for="nom">Nombre</label>
+  <label for="name">Nombre</label>
   <input
-    id="nom"
-    name="nom"
+    id="name"
+    name="name"
     type="text"
     maxlength="100"
     required
@@ -172,7 +234,7 @@ el método `POST`:
 
   <label>
     <input
-      name="privacitat"
+      name="privacy"
       type="checkbox"
       value="1"
       required
@@ -249,9 +311,9 @@ La respuesta correcta es:
 
 ```bash
 curl -i -X POST https://ejemplo.com/api/contact \
-  --data-urlencode "nom=Anna" \
+  --data-urlencode "name=Anna" \
   --data-urlencode "email=anna@example.com" \
-  --data "privacitat=1" \
+  --data "privacy=1" \
   --data "newsletter=1"
 ```
 
@@ -265,7 +327,7 @@ Location: /gracias/
 
 ```bash
 curl -i -X POST https://ejemplo.com/api/contact \
-  --data-urlencode "nom=Anna" \
+  --data-urlencode "name=Anna" \
   --data-urlencode "email=email-incorrecto"
 ```
 
@@ -285,7 +347,8 @@ Para usarlo en otro proyecto:
 3. Crea un `.env` específico para esa web.
 4. Copia `doc_public/api/` a su `public_html/api/`.
 5. Añade `action="/api/contact" method="POST"` a su formulario.
-6. Usa los mismos nombres de campos o adapta `ContactController.php`.
+6. Usa los mismos nombres de campos o adapta las variables `CONTACT_*` del
+   `.env` (no hace falta tocar PHP).
 7. Crea las páginas de éxito y error configuradas en `.env`.
 8. Comprueba `/api/` y realiza un envío de prueba.
 
@@ -295,15 +358,15 @@ web en otra.
 ## Adaptar los campos
 
 No hace falta tocar PHP: los campos se adaptan por `.env`. Si otro formulario
-utiliza, por ejemplo, `name` en vez de `nom` y `subscribe` en vez de
+utiliza, por ejemplo, `nom` en vez de `name` y `subscribe` en vez de
 `newsletter`:
 
 ```dotenv
 CONTACT_EMAIL_FIELD=email
 CONTACT_NEWSLETTER_FIELD=subscribe
-CONTACT_REQUIRED_FIELDS=name,privacy
+CONTACT_REQUIRED_FIELDS=nom,privacy
 CONTACT_CHECKBOX_FIELDS=privacy,subscribe
-PLUNK_CONTACT_FIELDS=name
+PLUNK_CONTACT_FIELDS=nom:name
 ```
 
 Las rutas se encuentran en `src/routes.php`. Si algún día creas nuevas clases
@@ -317,8 +380,9 @@ composer dump-autoload --optimize
 
 Con el `.env` fuera de la carpeta privada, actualizar es sustituir la carpeta:
 
-1. Haz una copia de seguridad si ya se almacenan datos (por ejemplo, registros
-   en `storage/`, que también se pierde al sustituir la carpeta).
+1. Haz una copia de seguridad si ya se almacenan datos (por ejemplo, la base
+   de datos SQLite o los registros en `storage/`, que se pierde al sustituir
+   la carpeta).
 2. Reemplaza la carpeta `api-forms/` completa por la nueva versión.
 3. Ejecuta `composer install --no-dev --optimize-autoloader` o incluye
    `vendor/` en la carpeta que subes.
@@ -376,14 +440,15 @@ con esos mismos nombres, y que las casillas obligatorias envíen `value="1"`.
 - No utilices permisos `777`.
 - Actualiza las dependencias de forma controlada y revisa los cambios antes de
   desplegarlos.
-- Conserva pruebas del consentimiento cuando se implemente la base de datos.
+- Con el guardado en base de datos activado, los envíos (incluidas las
+  casillas de consentimiento) quedan registrados con fecha; protege esa base
+  de datos como cualquier otro dato personal.
 - Añade protección antispam y limitación de peticiones antes de exponer
   formularios con mucho tráfico.
 
 ## Siguientes mejoras previstas
 
-- Guardar cada solicitud y sus consentimientos en una base de datos.
-- Integrar el envío transaccional mediante Plunk.
-- Registrar fecha y versión de la política de privacidad aceptada.
+- Registrar la versión de la política de privacidad aceptada.
 - Añadir honeypot y limitación de peticiones.
-- Registrar errores internos sin exponer detalles al visitante.
+- Registrar errores internos en fichero (`storage/logs/`) sin exponer
+  detalles al visitante.

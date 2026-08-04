@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Plunk;
 
+use App\Support\Env;
+
 /**
  * Saves form submitters as Plunk contacts. Best-effort, never blocks the
  * caller. Opt-in per deployment via PLUNK_SAVE_CONTACTS.
@@ -50,7 +52,7 @@ final class Contacts
      */
     private static function enabled(): bool
     {
-        return filter_var($_ENV['PLUNK_SAVE_CONTACTS'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        return Env::bool('PLUNK_SAVE_CONTACTS');
     }
 
     /**
@@ -133,17 +135,15 @@ final class Contacts
      * Parses PLUNK_CONTACT_FIELDS, a comma-separated list of form fields to
      * store in the Plunk contact. Each entry is either "field" or
      * "field:plunkKey" to store it under a different name, e.g.
-     * "nom:name,telefon". Empty or missing means no extra data is stored.
+     * "name,phone:telefono". Empty or missing means no extra data is stored.
      *
      * @return array<string, string> Form field name => Plunk data key.
      */
     private static function configuredFields(): array
     {
-        $configured = (string) ($_ENV['PLUNK_CONTACT_FIELDS'] ?? '');
-
         $map = [];
 
-        foreach (explode(',', $configured) as $entry) {
+        foreach (Env::list('PLUNK_CONTACT_FIELDS') as $entry) {
             [$formField, $plunkKey] = array_pad(explode(':', $entry, 2), 2, null);
 
             $formField = trim((string) $formField);

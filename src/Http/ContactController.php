@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Http;
 
+use App\Database\Submissions;
 use App\Mail\PlunkMailer;
 use App\Plunk\Contacts;
+use App\Support\Env;
 
 /**
  * Accepts any form: the controller has no hardcoded field names. Which field
@@ -25,8 +27,8 @@ final class ContactController
     {
         $fields = FormRequest::fields();
 
-        $email = self::stringField($fields, self::envName('CONTACT_EMAIL_FIELD', 'email'));
-        $subscribed = ($fields[self::envName('CONTACT_NEWSLETTER_FIELD', 'newsletter')] ?? null) === '1';
+        $email = self::stringField($fields, Env::string('CONTACT_EMAIL_FIELD', 'email'));
+        $subscribed = ($fields[Env::string('CONTACT_NEWSLETTER_FIELD', 'newsletter')] ?? null) === '1';
 
         if (!self::isValid($email, $fields)) {
             self::redirect(self::redirectUrl('CONTACT_ERROR_URL', '/contacto/?error=validation'));
@@ -35,6 +37,8 @@ final class ContactController
         PlunkMailer::send(self::subject($fields, $email), self::humanizeCheckboxes($fields));
 
         Contacts::save($email, $subscribed, $fields);
+
+        Submissions::save($email, $fields);
 
         self::redirect(self::redirectUrl('CONTACT_SUCCESS_URL', '/gracias/'));
     }
@@ -48,7 +52,7 @@ final class ContactController
      */
     private static function subject(array $fields, string $email): string
     {
-        $configured = trim((string) ($_ENV['CONTACT_EMAIL_SUBJECT'] ?? ''));
+        $configured = Env::string('CONTACT_EMAIL_SUBJECT');
 
         if ($configured === '') {
             return 'New contact message from ' . $email;
@@ -73,7 +77,7 @@ final class ContactController
      */
     private static function humanizeCheckboxes(array $fields): array
     {
-        foreach (self::envList('CONTACT_CHECKBOX_FIELDS') as $checkbox) {
+        foreach (Env::list('CONTACT_CHECKBOX_FIELDS') as $checkbox) {
             if (array_key_exists($checkbox, $fields)) {
                 $fields[$checkbox] = $fields[$checkbox] === '1' ? 'Sí' : 'No';
             }
@@ -100,8 +104,10 @@ final class ContactController
             return false;
         }
 
-        foreach (self::envList('CONTACT_REQUIRED_FIELDS') as $required) {
-            if (($fields[$required] ?? '') === '' || ($fields[$required] ?? []) === []) {
+        foreach (Env::list('CONTACT_REQUIRED_FIELDS') as $required) {
+            $value = $fields[$required] ?? null;
+
+            if ($value === null || $value === '' || $value === []) {
                 return false;
             }
         }
@@ -130,26 +136,6 @@ final class ContactController
         return is_string($value) ? $value : '';
     }
 
-    /** Env-configured field name with a default when unset or blank. */
-    private static function envName(string $envKey, string $default): string
-    {
-        $name = trim((string) ($_ENV[$envKey] ?? ''));
-
-        return $name !== '' ? $name : $default;
-    }
-
-    /**
-     * Comma-separated env list, trimmed, empty entries ignored.
-     *
-     * @return array<int, string>
-     */
-    private static function envList(string $envKey): array
-    {
-        $entries = array_map('trim', explode(',', (string) ($_ENV[$envKey] ?? '')));
-
-        return array_values(array_filter($entries, static fn (string $entry): bool => $entry !== ''));
-    }
-
     /**
      * Only same-site local paths are allowed as redirect targets: anything
      * else in the env var (external, protocol-relative or empty) falls back,
@@ -157,7 +143,7 @@ final class ContactController
      */
     private static function redirectUrl(string $envKey, string $fallback): string
     {
-        $url = (string) ($_ENV[$envKey] ?? '');
+        $url = Env::string($envKey);
 
         return str_starts_with($url, '/') && !str_starts_with($url, '//')
             ? $url
