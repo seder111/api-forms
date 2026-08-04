@@ -8,6 +8,7 @@ use App\Database\Submissions;
 use App\Mail\PlunkMailer;
 use App\Plunk\Contacts;
 use App\Support\Env;
+use App\Turnstile\Verifier;
 
 /**
  * Accepts any form: the controller has no hardcoded field names. Which field
@@ -34,13 +35,41 @@ final class ContactController
             self::redirect(self::redirectUrl('CONTACT_ERROR_URL', '/contacto/?error=validation'));
         }
 
+        $successUrl = self::redirectUrl('CONTACT_SUCCESS_URL', '/gracias/');
+
+        // A bot that fails Turnstile must see exactly the same outcome as a
+        // real submission — same redirect, same timing shape — so it gets no
+        // signal telling it apart from a genuine success to probe against.
+        // The submission is dropped silently: no email, no Plunk contact, no
+        // database row.
+        if (!self::passesTurnstile($fields)) {
+            self::redirect($successUrl);
+        }
+
+        unset($fields[Verifier::FIELD]);
+
         PlunkMailer::send(self::subject($fields, $email), self::humanizeCheckboxes($fields));
 
         Contacts::save($email, $subscribed, $fields);
 
         Submissions::save($email, $fields);
 
-        self::redirect(self::redirectUrl('CONTACT_SUCCESS_URL', '/gracias/'));
+        self::redirect($successUrl);
+    }
+
+    /**
+     * True when Turnstile is disabled for this deployment (no check
+     * applies) or, when enabled, the submitted token passes verification.
+     *
+     * @param array<string, string|array<int, string>> $fields
+     */
+    private static function passesTurnstile(array $fields): bool
+    {
+        if (!Verifier::enabled()) {
+            return true;
+        }
+
+        return Verifier::verify(self::stringField($fields, Verifier::FIELD), $_SERVER['REMOTE_ADDR'] ?? null);
     }
 
     /**
@@ -90,7 +119,10 @@ final class ContactController
      * The email field must hold a valid address, every field listed in
      * CONTACT_REQUIRED_FIELDS must have a value (a checked checkbox sends
      * "1", so required consent checkboxes work too), and no value may exceed
-     * the generic length cap.
+     * the generic length cap. Turnstile is checked separately by
+     * passesTurnstile(), not here: its failure must redirect like a success
+     * (see store()), while these failures are genuine user-facing errors
+     * that redirect to CONTACT_ERROR_URL.
      *
      * @param array<string, string|array<int, string>> $fields
      */

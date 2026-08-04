@@ -184,6 +184,42 @@ Como el resto de integraciones, el guardado es *best-effort*: si la base de
 datos no está disponible, el error se registra en el log del servidor y el
 visitante es redirigido a la página de éxito igualmente.
 
+### Protección anti-bot con Cloudflare Turnstile
+
+Verificar el envío con [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/)
+es opcional y está desactivado por defecto: cada web debe activarlo con
+`TURNSTILE_SECRET_KEY` en su `.env`. Sin esa variable no se comprueba nada,
+para no romper webs que no incrustan el widget.
+
+```dotenv
+TURNSTILE_SECRET_KEY=
+```
+
+A diferencia del resto de integraciones (Plunk, base de datos), esta
+comprobación **no** es best-effort: es la única barrera del lado servidor
+frente a un bot que se salte el widget ignorando su JavaScript. Con la clave
+puesta, todo envío debe incluir el campo oculto `cf-turnstile-response` que
+genera el widget; si el campo falta, Cloudflare no lo valida o la llamada a
+`siteverify` falla por cualquier motivo, el envío se descarta silenciosamente.
+
+Ese descarte es intencionadamente indistinguible de un envío correcto: el
+visitante recibe el mismo redirect a `CONTACT_SUCCESS_URL`, sin ningún
+cambio de tiempos ni de respuesta, para no darle al bot ninguna señal que le
+permita ajustar su comportamiento hasta esquivar la protección. Simplemente
+no se envía el email de notificación, no se guarda el contacto en Plunk ni
+el registro en base de datos. Esto es distinto de un fallo de validación
+normal (falta el email o un campo de `CONTACT_REQUIRED_FIELDS`), que sigue
+redirigiendo a `CONTACT_ERROR_URL` porque ahí sí es un error real del
+visitante que necesita ver. El campo `cf-turnstile-response` nunca llega al
+email de notificación ni se guarda en Plunk o en la base de datos.
+
+Lo que queda fuera de este repositorio, por deployment:
+
+1. Crear el widget en el [dashboard de Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile)
+   y añadir su *site key* al frontend (el script del widget y el `data-sitekey`
+   del `<div class="cf-turnstile">` en el HTML del formulario).
+2. Copiar la *secret key* de ese mismo widget en `TURNSTILE_SECRET_KEY`.
+
 El archivo `.env` no debe subirse a Git ni colocarse dentro de `public_html`.
 
 ### 4. Publicar el punto de entrada
@@ -272,6 +308,12 @@ pero la validación definitiva siempre se realiza de nuevo en PHP: el email
 debe ser válido (máximo 254 caracteres), los campos de
 `CONTACT_REQUIRED_FIELDS` deben llegar con valor y ningún campo puede superar
 los 5000 caracteres.
+
+Si `TURNSTILE_SECRET_KEY` está configurada (ver
+["Protección anti-bot con Cloudflare Turnstile"](#protección-anti-bot-con-cloudflare-turnstile)),
+el formulario debe incluir además el widget de Turnstile; su campo oculto
+`cf-turnstile-response` es obligatorio y se verifica contra Cloudflare antes
+de aceptar el envío.
 
 ## Páginas que debe tener la web
 
@@ -430,6 +472,16 @@ Comprueba que el campo declarado en `CONTACT_EMAIL_FIELD` llegue con un email
 válido, que los campos de `CONTACT_REQUIRED_FIELDS` existan en el formulario
 con esos mismos nombres, y que las casillas obligatorias envíen `value="1"`.
 
+### El envío redirige a éxito pero no llega el email ni se guarda nada
+
+Con `TURNSTILE_SECRET_KEY` configurada, esto es el comportamiento esperado
+cuando el envío no supera la verificación de Turnstile: se descarta
+silenciosamente y se redirige igual que un envío correcto (ver
+["Protección anti-bot con Cloudflare Turnstile"](#protección-anti-bot-con-cloudflare-turnstile)).
+Revisa el log del servidor (`error_log`) para confirmar el motivo — ahí sí
+queda registrado el resultado de `siteverify` — y que el widget esté bien
+configurado en el frontend con la *site key* correcta.
+
 ## Seguridad
 
 - Mantén `.env`, `vendor/`, `src/` y los registros fuera de `public_html`.
@@ -443,8 +495,8 @@ con esos mismos nombres, y que las casillas obligatorias envíen `value="1"`.
 - Con el guardado en base de datos activado, los envíos (incluidas las
   casillas de consentimiento) quedan registrados con fecha; protege esa base
   de datos como cualquier otro dato personal.
-- Añade protección antispam y limitación de peticiones antes de exponer
-  formularios con mucho tráfico.
+- Activa Turnstile (`TURNSTILE_SECRET_KEY`, ver arriba) y añade limitación de
+  peticiones antes de exponer formularios con mucho tráfico.
 
 ## Siguientes mejoras previstas
 
